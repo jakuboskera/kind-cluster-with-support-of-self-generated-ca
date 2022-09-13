@@ -1,0 +1,6 @@
+-----BEGIN CERTIFICATE-----
+<certificate_of_root_issuer>
+-----END CERTIFICATE-----
+-----BEGIN CERTIFICATE-----
+<certificate_of_intermediate_issuer>
+-----END CERTIFICATE-----
