@@ -5,7 +5,7 @@ K8s cluster from container repository with TLS certificate issued by self
 generated CA, but kubelet cannot pull that image because of this error
 `x509: certificate signed by unknown authority`.
 
-`Solution` - Inject self generated [CA certificate](internal-ca-bundle.crt)(s)
+`Solution` - Inject self generated CA certificate(s)
 into K8s cluster node so kubelet will treat a TLS certificate
 (issued from self generated CA) for container repository as trusted.
 
@@ -16,47 +16,48 @@ Original [issue](https://github.com/kubernetes-sigs/kind/issues/2055).
 - [kind K8s cluster with support of self generated CA](#kind-k8s-cluster-with-support-of-self-generated-ca)
   - [TOC](#toc)
   - [🏁 Get started](#-get-started)
-    - [Add your CA bundle](#add-your-ca-bundle)
-    - [🚀 Create cluster](#-create-cluster)
-    - [🧹 Destroy cluster](#-destroy-cluster)
-    - [🙋‍♂️ Additional info](#️-additional-info)
+    - [🚀 Create infra](#-create-infra)
+    - [Using an existing on-premise registry](#using-an-existing-on-premise-registry)
+    - [🧹 Destroy infra](#-destroy-infra)
+  - [What happens under the hood](#what-happens-under-the-hood)
 
 ## 🏁 Get started
 
-### Add your CA bundle
-
-Add certificate(s) of self generated CA into [internal-ca-bundle.crt](internal-ca-bundle.crt)
-file. If there is some intermediate issuer(s), place it in this order
-
-```bash
-$ cat internal-ca-bundle.crt
------BEGIN CERTIFICATE-----
-<certificate_of_root_issuer>
------END CERTIFICATE-----
------BEGIN CERTIFICATE-----
-<certificate_of_intermediate_issuer>
------END CERTIFICATE-----
-```
-
-[More info](https://cheapsslsecurity.com/p/what-is-ssl-certificate-chain/)
-regarding order of multiple CAs.
-
-### 🚀 Create cluster
+### 🚀 Create infra
 
 ```bash
 make tf-apply
 ```
 
-### 🧹 Destroy cluster
+By default, this deploys a local Docker registry with TLS (signed by the
+internal CA), pushes a test image, and verifies a pod can pull it.
+
+### Using an existing on-premise registry
+
+If you already have an on-premise registry with a certificate signed by your
+internal CA, you can skip the local registry deployment:
+
+```bash
+terraform apply -auto-approve -var deploy_registry=false
+```
+
+In this mode, only the kind cluster with the injected CA trust store is created.
+You provide your own CA bundle in `internal-ca-bundle.crt` before running apply.
+
+### 🧹 Destroy infra
 
 ```bash
 make tf-destroy
 ```
 
-### 🙋‍♂️ Additional info
+## What happens under the hood
 
-In created cluster there is preinstalled
-[ingress-nginx](https://github.com/kubernetes/ingress-nginx),
-which maps your local ports `80` and `443` to this ingress controller.
-To use this ingress controller, specify `.spec.ingressClassName: nginx`
-in your ingress manifest(s).
+1. Terraform generates an **internal CA** (key + certificate) using the `tls` provider
+2. A **kind K8s cluster** is created with the CA certificate injected into the
+   node's trust store (`update-ca-certificates`)
+3. *(when `deploy_registry = true`)* A **Docker registry** with TLS (server cert
+   signed by the internal CA) is started and connected to the `kind` Docker network
+4. A test image (`busybox`) is pushed to the internal registry
+5. A **test pod** is created that pulls the image from the internal registry —
+   proving that kubelet trusts the internal CA
+6. The pod is verified to be in `Ready` state
